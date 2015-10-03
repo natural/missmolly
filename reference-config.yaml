@@ -1,0 +1,131 @@
+# the first (and probably most useful) directive is `location`, which
+# tells the router to match on this path, and handle it as described.
+#
+- location: /launch/all/the/things
+
+  # the content key is used as the handler for this location.  it
+  # can be the key of a registered handler (like this one), or it
+  # can be a chunk of javascript code, or it can be a path to a
+  # javascript file.
+  content: RocketLauncherHandler
+  # content: response.Write("rockets launching!")
+  # content: file:path/to/app/scripts/rockets.js
+
+
+# the `location` directive has oodles of options, here's a sample:
+#
+- location: /home/{user}
+  match:
+    prefix: /home/ # match only this prefix
+    hosts: # match only these hosts
+      - example.com
+      - example.io
+    methods: # match only these http methods
+      - get
+      - head
+    schemes: # match only these schemes
+      - http
+      - https
+    queries: # match only these query strings
+      - id: "{id:[0-9]+}"
+      - category: food
+    headers: # match only these headers
+      - Content-Type: application/json
+      - X-Requested-With: XMLHttpRequest
+    custom: # match when these functions return true
+      - ServeOnlyOnFridays
+      - ServeOnlyExternalIpRanges
+
+  # the `rewrite` directives get first whack at the request/response:
+  rewrite: DenySomeRequestsRandomlyOnTuesdays
+  # or via javascript:
+  rewrite: >-
+    var q = request.url.get("q")
+    if (q === "rewrite") {
+      response.redirect("/greetings?who=earthling")
+    }
+
+  # one or more handler mapping functions ( func(http.Handler) http.Handler )
+  # these are called in order, to create a nested http.Handler.
+  middleware:
+    - NewContextHandler
+    - NewSessionHandler
+
+  # yah idk if this is gonna work:
+  auth: >-
+    var user = request.user; // provided by the mythical session middleware
+    if (user === 'fred') {
+        response.status_code(403)
+    }
+
+  content: >-
+    response.Write("hello from missmolly")
+
+  nested:
+    - location: /timer # matches /home/{user}/timer
+      handler: TimerHandler
+    - location: /stop-watch # matches /home/{user}/stop-watch
+      handler: StopWatchTimer
+
+
+# look ma, scripted http in golang!
+#
+- location: /greetings
+  content: >-
+    response.Write("Hello, world!")
+
+# locations can be named by starting the path with `@`.  named
+# locations aren't served directly, but they are callable by other
+# handlers.
+#
+# NB: you have to quote the @name form to make yaml happy.
+- location: "@quote-db"
+  handler: RandomQuoteHandler
+
+- location: "@json-encoder"
+  content: >-
+    request.Write(JSON.stringify(location.args[0]))
+
+
+- location: /any/kind/of/json/data
+  methods: post
+  content: >-
+    var cap = request.Capture("@json-encoder", {"message":"hello"})
+    request.Write(cap.Body())
+
+- location: internal:404
+  handler: Friendly404Page
+
+- location: /trickster
+  pass: "@404"
+
+# and the obligatory static file server.
+#
+- location: /static/
+  alias: public/assets/
+
+
+- location: /echo
+  content: GoodGollyMissMolly
+
+# or...
+- location: /nah
+  handler: DirectoryHandler
+  handler-opts:
+    strip-prefix: yes
+    allow-relative: no
+
+- location: /ok-what
+  set: my_path request.path
+  pass:  "server:9300/proxy/{js: my_path + os.environ.server_base}"
+
+# plugins ?
+
+- http:
+  listen:
+    - localhost:3000
+    - public:4000
+
+- init:
+  - js: app = {}; app.database = {};
+  - js-file: path/to/init.js
