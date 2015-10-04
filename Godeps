@@ -1,0 +1,4 @@
+gopkg.in/yaml.v2 53feefa2559fb8dfa8d81baad31be332c97d6c77
+github.com/robertkrimen/otto 47082f430885e505c18bbedc3e2b336a968a50dd
+github.com/gorilla/mux ad4d7a5882b961e07e2626045eb995c022ac6664
+github.com/gorilla/context 1c83b3eabd45b6d76072b66b746c20815fb2872d

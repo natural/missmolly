@@ -1,9 +1,10 @@
-package missmolly
+package directive
 
 import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/natural/missmolly/config"
 )
 
 //
@@ -25,7 +26,7 @@ type DirectiveHandler interface {
 //
 //
 type ServerContext struct {
-	Confg      *Config
+	Confg      *config.Config
 	RootMux    *mux.Router
 	Directives Directives
 }
