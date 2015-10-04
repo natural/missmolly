@@ -1,9 +1,9 @@
 package config
 
 import (
-	"log"
-
 	"gopkg.in/yaml.v2"
+
+	"github.com/natural/missmolly/log"
 )
 
 // Struct Config holds the run-time application configuration; the main function
@@ -36,7 +36,7 @@ func New(bs []byte) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("have decls: %+v keys: %v error: %v\n",
-		len(decls), decls[0].keys(), err)
+	log.Info("config", "init", true, "decls-count",
+		len(decls), "decl-keys", decls[0].keys(), "error", err)
 	return &Config{}, nil
 }

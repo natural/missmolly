@@ -3,13 +3,14 @@ package server
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/natural/missmolly/config"
 	"github.com/robertkrimen/otto"
+
+	"github.com/natural/missmolly/config"
+	"github.com/natural/missmolly/log"
 )
 
 //
@@ -17,7 +18,8 @@ import (
 func NewFromBytes(bs []byte) (*Server, error) {
 	c, err := config.New(bs)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("server", "error", err, "cond", 0)
+		return nil, err
 	}
 	return New(c)
 }
@@ -68,31 +70,42 @@ func (s *Server) ListenAndServe() error {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	vm := s.NewVM(w, r)
 	js := `
-        var header = response.header()
-        response.write('hello from javascript: ' + request.method);
-        console.log("header:", header.X, header.Y)
+        response.write('hello from javascript: ' + r.Method);
+        console.log("client accepts: ", r.Header["Accept"])
     `
 	_, err := vm.Run(js)
-	log.Printf("vm error: %v", err)
+	log.Info("vm", "error", err)
 }
 
 //
 //
-func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) {
-	vm := s.VM.Copy() // faster than channel
+func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) *otto.Otto {
+	// faster than channel, mb need a diff way to queue vm copies.  still slow.
+	vm := s.VM.Copy()
+	vm.Set("r", r)
+	vm.Set("w", w)
 
+	// build some kind of api instead:
 	// build the request object
-	_, err := vm.Object(fmt.Sprintf("request = {method: '%v'}", r.Method))
+	vreq, err := vm.Object(fmt.Sprintf("request = {}"))
 	if err != nil {
-		log.Fatal(err)
+		log.Error("newvm", "error", err)
+		panic(err)
+	}
+	vtbl := map[string]interface{}{
+		"method": r.Method,
+	}
+	for k, v := range vtbl {
+		vreq.Set(k, v)
 	}
 
 	// build the response object
 	vres, err := vm.Object("response = {}")
 	if err != nil {
-		log.Fatal(err)
+		log.Error("server", "error", err)
+		panic(err)
 	}
-	resvtbl := map[string]interface{}{
+	vtbl = map[string]interface{}{
 		"write": func(v string) {
 			w.Write([]byte(v))
 		},
@@ -103,8 +116,8 @@ func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) {
 			return w.Header()
 		},
 	}
-	for k, v := range resvtbl {
+	for k, v := range vtbl {
 		vres.Set(k, v)
 	}
-
+	return vm
 }
