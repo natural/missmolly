@@ -2,8 +2,10 @@ package server
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/natural/missmolly/config"
@@ -12,30 +14,33 @@ import (
 
 //
 //
-func New(bs []byte) *Server {
+func NewFromBytes(bs []byte) (*Server, error) {
 	c, err := config.New(bs)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return NewFromConfig(c)
+	return New(c)
 }
 
-func NewFromConfig(c *config.Config) *Server {
+//
+//
+func New(c *config.Config) (*Server, error) {
 	r := mux.NewRouter()
 	o := otto.New()
-
 	s := &Server{
 		Config: c,
 		Router: r,
 		VM:     o,
 	}
-
-	return s
+	return s, nil
 }
 
-func NewFromFile(file string) *Server {
-	bs := []byte{}
-	return New(bs)
+func NewFromFile(fn string) (*Server, error) {
+	bs, err := ioutil.ReadFile(fn)
+	if err != nil {
+		return nil, err
+	}
+	return NewFromBytes(bs)
 }
 
 // Root handler, delegates to an internal mux.
@@ -46,41 +51,60 @@ type Server struct {
 	VM     *otto.Otto
 }
 
-//
-//
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	vm := s.VM.Copy() // faster than channel
-	_, err := vm.Object(fmt.Sprintf("request = {method: '%v'}", r.Method))
-	if err != nil {
-		log.Fatal(err)
+func (s *Server) ListenAndServe() error {
+	// all hosts in conf ofc
+	srv := &http.Server{
+		Addr:           ":7373",
+		Handler:        s, //app per server, or...
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
-	vres, err := vm.Object("response = {}")
-	if err != nil {
-		log.Fatal(err)
-	}
-	vres.Set("write", func(v string) {
-		w.Write([]byte(v))
-	})
-	vres.Set("status", func(i int) {
-		w.WriteHeader(i)
-	})
-	vres.Set("headers", func() http.Header {
-		return w.Header()
-	})
-
-	//
-	js := "response.write('hello from javascript: ' + request.method)"
-	//w.Header()["Content-Type"] = []string{"text/json"}
-	_, _ = vm.Run(js)
-	//log.Printf("vm value: %v err: %v", v, err)
+	return srv.ListenAndServe()
 }
 
 //
 //
-type ServerRoutes []*ServerRoute
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	vm := s.NewVM(w, r)
+	js := `
+        var header = response.header()
+        response.write('hello from javascript: ' + request.method);
+        console.log("header:", header.X, header.Y)
+    `
+	_, err := vm.Run(js)
+	log.Printf("vm error: %v", err)
+}
 
 //
 //
-type ServerRoute struct {
-	Path string
+func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) {
+	vm := s.VM.Copy() // faster than channel
+
+	// build the request object
+	_, err := vm.Object(fmt.Sprintf("request = {method: '%v'}", r.Method))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// build the response object
+	vres, err := vm.Object("response = {}")
+	if err != nil {
+		log.Fatal(err)
+	}
+	resvtbl := map[string]interface{}{
+		"write": func(v string) {
+			w.Write([]byte(v))
+		},
+		"status": func(i int) {
+			w.WriteHeader(i)
+		},
+		"header": func() http.Header {
+			return w.Header()
+		},
+	}
+	for k, v := range resvtbl {
+		vres.Set(k, v)
+	}
+
 }

@@ -3,41 +3,45 @@ package directive
 import (
 	"net/http"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/gorilla/mux"
-	"github.com/natural/missmolly/config"
 )
 
-//
-//
 var DirectiveRegistry = map[string]Directive{
-//	"init": InitDirective{},
-//	"http": HttpDirective{},
+	"init": &InitDirective{},
+	"http": &HttpDirective{},
 }
 
-type InitDirective struct {
+type DirectiveHandlerFunc func(*ServerContext, []byte) (*ServerContext, error)
+
+// Directive interprets a map of objects, possibly creating http handlers, possibly
+// modifying the server, etc.
+//
+type Directive interface {
+	Process(ServerContext, map[string]interface{}) (bool, error)
 }
 
-// A DirectiveHandler can interpret a config directive.
-//
-type DirectiveHandler interface {
-	ProcessDirective(*ServerContext, []byte) (bool, error)
-}
-
-//
-//
-type ServerContext struct {
-	Confg      *config.Config
-	RootMux    *mux.Router
-	Directives Directives
+type ServerContext interface {
+	RootRouter() *mux.Router
 }
 
 //
 //
 type Directives interface {
-	Routes() ServerRoutes
+	//	Routes() ServerRoutes
 }
 
-type Directive interface {
-	http.Handler
+type DirectiveFilter interface {
 	Filter(*http.Request, http.ResponseWriter) (bool, error)
+}
+
+// Map an interfacy thing into something else.
+//
+func Remarshal(in map[string]interface{}, out interface{}) error {
+	bs, err := yaml.Marshal(in)
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal(bs, out)
 }
