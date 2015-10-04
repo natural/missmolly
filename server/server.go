@@ -10,6 +10,7 @@ import (
 	"github.com/robertkrimen/otto"
 
 	"github.com/natural/missmolly/config"
+	"github.com/natural/missmolly/directive"
 	"github.com/natural/missmolly/log"
 )
 
@@ -29,14 +30,24 @@ func NewFromBytes(bs []byte) (*Server, error) {
 func New(c *config.Config) (*Server, error) {
 	r := mux.NewRouter()
 	o := otto.New()
+
 	s := &Server{
 		Config: c,
 		Router: r,
 		VM:     o,
 	}
+
+	for _, rd := range c.RawItems {
+		if d := directive.Select(rd); d != nil {
+			c.Directives = append(c.Directives, d)
+		}
+	}
+	log.Info("server.new", "directives.count", len(c.Directives))
 	return s, nil
 }
 
+//
+//
 func NewFromFile(fn string) (*Server, error) {
 	bs, err := ioutil.ReadFile(fn)
 	if err != nil {
@@ -53,6 +64,8 @@ type Server struct {
 	VM     *otto.Otto
 }
 
+//
+//
 func (s *Server) ListenAndServe() error {
 	// all hosts in conf ofc
 	srv := &http.Server{
@@ -68,29 +81,44 @@ func (s *Server) ListenAndServe() error {
 //
 //
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	vm := s.NewVM(w, r)
+	vm, err := s.NewVM(w, r)
+	if err != nil {
+		log.Error("server", "error", err, "cond", 1)
+		return
+	}
 	js := `
         response.write('hello from javascript: ' + r.Method);
-        console.log("client accepts: ", r.Header["Accept"])
+        console.log("client accepts:", r.Header["Accept"])
     `
-	_, err := vm.Run(js)
-	log.Info("vm", "error", err)
+	if _, err := vm.Run(js); err != nil {
+		log.Error("vm", "path", r.URL, "error", err)
+	} else {
+		log.Info("vm", "path", r.URL, "status", "?")
+	}
+
 }
 
 //
 //
-func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) *otto.Otto {
+func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) (*otto.Otto, error) {
 	// faster than channel, mb need a diff way to queue vm copies.  still slow.
 	vm := s.VM.Copy()
 	vm.Set("r", r)
 	vm.Set("w", w)
 
+	con, err := vm.Object("console")
+	if err != nil {
+		return nil, err
+	}
+	con.Set("log", func(items ...interface{}) {
+		log.Info("request", items...)
+	})
+
 	// build some kind of api instead:
 	// build the request object
 	vreq, err := vm.Object(fmt.Sprintf("request = {}"))
 	if err != nil {
-		log.Error("newvm", "error", err)
-		panic(err)
+		return nil, err
 	}
 	vtbl := map[string]interface{}{
 		"method": r.Method,
@@ -119,5 +147,5 @@ func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) *otto.Otto {
 	for k, v := range vtbl {
 		vres.Set(k, v)
 	}
-	return vm
+	return vm, nil
 }
