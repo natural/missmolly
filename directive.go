@@ -25,7 +25,7 @@ type DirectiveHandler interface {
 //
 //
 type ServerContext struct {
-	Conf       *Conf
+	Confg      *Config
 	RootMux    *mux.Router
 	Directives Directives
 }
@@ -39,14 +39,4 @@ type Directives interface {
 type Directive interface {
 	http.Handler
 	Filter(*http.Request, http.ResponseWriter) (bool, error)
-}
-
-//
-//
-type ServerRoutes []*ServerRoute
-
-//
-//
-type ServerRoute struct {
-	Path string
 }
