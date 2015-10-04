@@ -1,4 +1,4 @@
-package missmolly
+package config
 
 // Struct Config holds the run-time application configuration; the main function
 // builds and populates one of these.
@@ -6,6 +6,6 @@ package missmolly
 type Config struct {
 }
 
-func NewConfig(bs []byte) (*Config, error) {
+func New(bs []byte) (*Config, error) {
 	return &Config{}, nil
 }

@@ -1,4 +1,4 @@
-package missmolly
+package server
 
 import (
 	"fmt"
@@ -6,20 +6,21 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/natural/missmolly/config"
 	"github.com/robertkrimen/otto"
 )
 
 //
 //
-func NewServer(bs []byte) *Server {
-	c, err := NewConfig(bs)
+func New(bs []byte) *Server {
+	c, err := config.New(bs)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return NewServerFromConfig(c)
+	return NewFromConfig(c)
 }
 
-func NewServerFromConfig(c *Config) *Server {
+func NewFromConfig(c *config.Config) *Server {
 	r := mux.NewRouter()
 	o := otto.New()
 
@@ -32,15 +33,15 @@ func NewServerFromConfig(c *Config) *Server {
 	return s
 }
 
-func NewServerFromFile(file string) *Server {
+func NewFromFile(file string) *Server {
 	bs := []byte{}
-	return NewServer(bs)
+	return New(bs)
 }
 
 // Root handler, delegates to an internal mux.
 //
 type Server struct {
-	Config *Config
+	Config *config.Config
 	Router *mux.Router
 	VM     *otto.Otto
 }
