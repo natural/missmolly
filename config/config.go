@@ -21,6 +21,7 @@ func New(bs []byte) (*Config, error) {
 	rds := []map[string]interface{}{}
 	err := yaml.Unmarshal(bs, &rds)
 	if err != nil {
+		log.Error("config.init.unmarshal", "error", err)
 		return nil, err
 	}
 	drs := directive.Directives{}
@@ -28,6 +29,6 @@ func New(bs []byte) (*Config, error) {
 		Directives: drs,
 		RawItems:   rds,
 	}
-	log.Info("config.init", "bytes.in", len(bs))
+	log.Info("config.init.success", "bytes", len(bs))
 	return cfg, nil
 }

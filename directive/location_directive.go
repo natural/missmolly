@@ -1,7 +1,7 @@
 package directive
 
 import (
-	"github.com/natural/missmolly/mm"
+	"github.com/natural/missmolly/api"
 )
 
 //
@@ -11,6 +11,6 @@ type LocationDirective struct {
 
 //
 //
-func (d *LocationDirective) Process(c mm.ServerManipulator, items map[string]interface{}) (bool, error) {
+func (d *LocationDirective) Process(c api.ServerManipulator, items map[string]interface{}) (bool, error) {
 	return false, nil
 }

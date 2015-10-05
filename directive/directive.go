@@ -1,14 +1,14 @@
 package directive
 
 import (
-	"github.com/natural/missmolly/mm"
+	"github.com/natural/missmolly/api"
 )
 
 // Directive interprets a map of objects, possibly creating http handlers, possibly
 // modifying the server, etc.
 //
 type Directive interface {
-	Process(mm.ServerManipulator, map[string]interface{}) (bool, error)
+	Process(api.ServerManipulator, map[string]interface{}) (bool, error)
 }
 
 type Directives []Directive
@@ -56,7 +56,7 @@ func Select(items map[string]interface{}) (string, Directive) {
 }
 
 //
-type DirectiveFunc func(mm.ServerManipulator, map[string]interface{}) (bool, error)
+type DirectiveFunc func(api.ServerManipulator, map[string]interface{}) (bool, error)
 
 //
 //
@@ -68,6 +68,6 @@ func FromFunc(f DirectiveFunc) Directive {
 //
 type dfw struct{ df DirectiveFunc }
 
-func (d dfw) Process(srv mm.ServerManipulator, items map[string]interface{}) (bool, error) {
+func (d dfw) Process(srv api.ServerManipulator, items map[string]interface{}) (bool, error) {
 	return d.df(srv, items)
 }

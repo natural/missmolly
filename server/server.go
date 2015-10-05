@@ -12,6 +12,7 @@ import (
 	"github.com/inconshreveable/log15"
 	"github.com/robertkrimen/otto"
 
+	"github.com/natural/missmolly/api"
 	"github.com/natural/missmolly/config"
 	"github.com/natural/missmolly/directive"
 	"github.com/natural/missmolly/log"
@@ -19,10 +20,10 @@ import (
 
 //
 //
-func NewFromBytes(bs []byte) (*Server, error) {
+func NewFromBytes(bs []byte) (api.ServerManipulator, error) {
 	c, err := config.New(bs)
 	if err != nil {
-		log.Error("server:new", "error", err, "cond", 0)
+		log.Error("server.new.config", "error", err)
 		return nil, err
 	}
 	return New(c)
@@ -30,7 +31,7 @@ func NewFromBytes(bs []byte) (*Server, error) {
 
 //
 //
-func New(c *config.Config) (*Server, error) {
+func New(c *config.Config) (api.ServerManipulator, error) {
 	s := &Server{
 		Config: c,
 		Router: mux.NewRouter(),
@@ -53,7 +54,7 @@ func New(c *config.Config) (*Server, error) {
 				dss[k] = []ds{{d, rd}}
 			}
 		} else {
-			log.Warn("server:new.directive", "missing", rd)
+			log.Warn("server.new.directive", "missing", rd)
 		}
 	}
 
@@ -61,17 +62,17 @@ func New(c *config.Config) (*Server, error) {
 	for i, dn := range directive.Keys() {
 		for j, w := range dss[dn] {
 			w.d.Process(s, w.i)
-			log.Info("server:new.process", "w", w, "i", i, "j", j)
+			log.Info("server.new.process", "w", w, "i", i, "j", j)
 		}
 	}
 
-	log.Info("server:new.directives", "count", len(c.Directives))
+	log.Info("server.new.directives", "count", len(c.Directives))
 	return s, nil
 }
 
 //
 //
-func NewFromFile(fn string) (*Server, error) {
+func NewFromFile(fn string) (api.ServerManipulator, error) {
 	bs, err := ioutil.ReadFile(fn)
 	if err != nil {
 		return nil, err
@@ -79,8 +80,11 @@ func NewFromFile(fn string) (*Server, error) {
 	return NewFromBytes(bs)
 }
 
-type Endpoint struct {
-	Addr, CertFile, KeyFile string
+type endpoint struct {
+	addr     string
+	certfile string
+	keyfile  string
+	tls      bool
 }
 
 // Root handler, delegates to an internal mux.
@@ -90,65 +94,61 @@ type Server struct {
 	Router *mux.Router
 	VM     *otto.Otto
 
-	Endpoints []Endpoint
-
-	VmInitFuncs []func(*otto.Otto) error
-}
-
-//
-//
-func (s *Server) ApplyInits() error {
-	for _, f := range s.VmInitFuncs {
-		if err := f(s.VM); err != nil {
-			return err
-		}
-	}
-	return nil
+	epts   []endpoint
+	inits  []func(*otto.Otto) error
+	httpds map[string]*http.Server
 }
 
 // implement the ServerManipulator interface:
 //
-func (s *Server) OnInit(f func(*otto.Otto) error) error {
-	s.VmInitFuncs = append(s.VmInitFuncs, f)
-	return nil
+func (s *Server) OnInit(f func(*otto.Otto) error) {
+	s.inits = append(s.inits, f)
 }
 
 //
 //
-func (s *Server) AddEndpoint(host, certFile, keyFile string) {
-	s.Endpoints = append(s.Endpoints, Endpoint{host, certFile, keyFile})
+func (s *Server) Endpoint(host, certfile, keyfile string, tls bool) {
+	s.epts = append(s.epts, endpoint{host, certfile, keyfile, tls})
+}
+
+func (s *Server) HttpServer(host string) *http.Server {
+	return s.httpds[host]
 }
 
 //
 //
-func (s *Server) AddHandler(path string, handler http.Handler) {
+func (s *Server) Handler(path string, handler http.Handler) {
 	s.Router.Handle(path, handler)
 }
 
 //
 //
 func (s *Server) Run() (err error) {
-	// all hosts in conf ofc
-	if len(s.Endpoints) == 0 {
+	if len(s.epts) == 0 {
 		return errors.New("no server endpoints; config missing http and/or https?")
 	}
-
+	for _, f := range s.inits {
+		if err := f(s.VM); err != nil {
+			return err
+		}
+	}
 	wg := sync.WaitGroup{}
-	for _, ep := range s.Endpoints {
-		s.ApplyInits()
+	s.httpds = map[string]*http.Server{}
+	for _, ep := range s.epts {
 		srv := &http.Server{
-			Addr:           ep.Addr,
-			Handler:        s, //app per server, or...
+			Addr:           ep.addr,
+			Handler:        s,
 			ReadTimeout:    10 * time.Second,
 			WriteTimeout:   10 * time.Second,
 			MaxHeaderBytes: 1 << 20,
 		}
+		s.httpds[ep.addr] = srv
 		wg.Add(1)
-		if ep.CertFile != "" && ep.KeyFile != "" {
+		if ep.tls {
 			go func() {
 				defer wg.Done()
 				log15.Info("server:run.listen-tls", "addr", srv.Addr)
-				if e := srv.ListenAndServeTLS(ep.CertFile, ep.KeyFile); e != nil {
+				if e := srv.ListenAndServeTLS(ep.certfile, ep.keyfile); e != nil {
 					log15.Error("server:run.listen-tls", "error", e)
 					err = e
 				}
@@ -175,17 +175,16 @@ func (s *Server) Run() (err error) {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	vm, err := s.NewVM(w, r)
 	if err != nil {
-		log.Error("server", "error", err, "cond", 1)
+		log.Error("server.new.vm", "error", err)
 		return
 	}
 	js := `
         response.write('hello from javascript: ' + r.Method);
-        console.log("client accepts:", r.Header["Accept"])
     `
 	if _, err := vm.Run(js); err != nil {
-		log.Error("vm:run", "path", r.URL, "error", err)
+		log.Error("server.vm run", "path", r.URL, "error", err)
 	} else {
-		log.Info("vm:run", "path", r.URL, "status", "?")
+		log.Info("server.vm.run", "path", r.URL, "status", "?")
 	}
 
 }
@@ -194,20 +193,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 //
 func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) (*otto.Otto, error) {
 	// faster than channel, mb need a diff way to queue vm copies.  still slow.
+	// sync.Pool not much faster either.
 	vm := s.VM.Copy()
+
+	// build some kind of api instead?
 	vm.Set("r", r)
 	vm.Set("w", w)
 
-	// con, err := vm.Object("console")
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// con.Set("log", func(items ...interface{}) {
-	// 	log.Info("request", items...)
-	// })
-
-	// build some kind of api instead:
-	// build the request object
+	// build the request object:
 	vreq, err := vm.Object(fmt.Sprintf("request = {}"))
 	if err != nil {
 		return nil, err
@@ -219,7 +212,7 @@ func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) (*otto.Otto, erro
 		vreq.Set(k, v)
 	}
 
-	// build the response object
+	// build the response object:
 	vres, err := vm.Object("response = {}")
 	if err != nil {
 		return nil, err
@@ -238,5 +231,6 @@ func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) (*otto.Otto, erro
 	for k, v := range vtbl {
 		vres.Set(k, v)
 	}
+
 	return vm, nil
 }

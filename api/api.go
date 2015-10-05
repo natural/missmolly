@@ -1,6 +1,6 @@
-// Package mm provides the api for using  missmolly as a library.
+// Package api provides the library interface for missmolly.
 //
-package mm
+package api
 
 import (
 	"net/http"
@@ -12,9 +12,10 @@ import (
 //
 //
 type ServerManipulator interface {
-	OnInit(func(*otto.Otto) error) error
-	AddEndpoint(string, string, string)
-	AddHandler(string, http.Handler)
+	OnInit(func(*otto.Otto) error)
+	Endpoint(string, string, string, bool)
+	Handler(string, http.Handler)
+	Run() error
 }
 
 // Map an interfacy thing into something else.

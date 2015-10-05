@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	"github.com/inconshreveable/log15"
-	"github.com/natural/missmolly/mm"
+	"github.com/natural/missmolly/api"
 	"github.com/robertkrimen/otto"
 )
 
 //
 
-func InitDirective(c mm.ServerManipulator, items map[string]interface{}) (bool, error) {
+func InitDirective(c api.ServerManipulator, items map[string]interface{}) (bool, error) {
 	s, ok := items["init"].(string)
 	if !ok {
 		return false, errors.New("init value not string")
