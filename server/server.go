@@ -1,12 +1,15 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/inconshreveable/log15"
 	"github.com/robertkrimen/otto"
 
 	"github.com/natural/missmolly/config"
@@ -76,6 +79,10 @@ func NewFromFile(fn string) (*Server, error) {
 	return NewFromBytes(bs)
 }
 
+type Endpoint struct {
+	Addr, CertFile, KeyFile string
+}
+
 // Root handler, delegates to an internal mux.
 //
 type Server struct {
@@ -83,13 +90,15 @@ type Server struct {
 	Router *mux.Router
 	VM     *otto.Otto
 
-	Hosts []string
+	Endpoints []Endpoint
 
-	inits []func(*otto.Otto) error
+	VmInitFuncs []func(*otto.Otto) error
 }
 
-func (s *Server) init() error {
-	for _, f := range s.inits {
+//
+//
+func (s *Server) ApplyInits() error {
+	for _, f := range s.VmInitFuncs {
 		if err := f(s.VM); err != nil {
 			return err
 		}
@@ -98,32 +107,67 @@ func (s *Server) init() error {
 }
 
 // implement the ServerManipulator interface:
+//
 func (s *Server) OnInit(f func(*otto.Otto) error) error {
-	s.inits = append(s.inits, f)
+	s.VmInitFuncs = append(s.VmInitFuncs, f)
 	return nil
 }
 
-func (s *Server) AddHost(host, certFile, keyFile string) {
-	s.Hosts = append(s.Hosts, host)
+//
+//
+func (s *Server) AddEndpoint(host, certFile, keyFile string) {
+	s.Endpoints = append(s.Endpoints, Endpoint{host, certFile, keyFile})
 }
 
+//
+//
 func (s *Server) AddHandler(path string, handler http.Handler) {
 	s.Router.Handle(path, handler)
 }
 
 //
 //
-func (s *Server) ListenAndServe() error {
+func (s *Server) Run() (err error) {
 	// all hosts in conf ofc
-	srv := &http.Server{
-		Addr:           ":7373",
-		Handler:        s, //app per server, or...
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: 1 << 20,
+	if len(s.Endpoints) == 0 {
+		return errors.New("no server endpoints; config missing http and/or https?")
 	}
-	s.init()
-	return srv.ListenAndServe()
+
+	wg := sync.WaitGroup{}
+	for _, ep := range s.Endpoints {
+		s.ApplyInits()
+		srv := &http.Server{
+			Addr:           ep.Addr,
+			Handler:        s, //app per server, or...
+			ReadTimeout:    10 * time.Second,
+			WriteTimeout:   10 * time.Second,
+			MaxHeaderBytes: 1 << 20,
+		}
+		wg.Add(1)
+		if ep.CertFile != "" && ep.KeyFile != "" {
+			go func() {
+				defer wg.Done()
+				log15.Info("server:run.listen-tls", "addr", srv.Addr)
+				if e := srv.ListenAndServeTLS(ep.CertFile, ep.KeyFile); e != nil {
+					log15.Error("server:run.listen-tls", "error", e)
+					err = e
+				}
+			}()
+		} else {
+			go func() {
+				defer wg.Done()
+				log15.Info("server:run.listen", "addr", srv.Addr)
+				if e := srv.ListenAndServe(); e != nil {
+					log15.Error("server:run.listen", "error", e)
+					err = e
+				}
+			}()
+		}
+
+	}
+
+	wg.Wait()
+	return
 }
 
 //

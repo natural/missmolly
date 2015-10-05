@@ -13,7 +13,7 @@ import (
 //
 type ServerManipulator interface {
 	OnInit(func(*otto.Otto) error) error
-	AddHost(string, string, string)
+	AddEndpoint(string, string, string)
 	AddHandler(string, http.Handler)
 }
 

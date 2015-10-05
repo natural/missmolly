@@ -50,7 +50,8 @@ func HttpDirective(c mm.ServerManipulator, items map[string]interface{}) (bool, 
 	if host == "" {
 		host = h["https"]
 	}
-	c.AddHost(host, cf, kf)
+	// mb check cert and key files exist and are readable
+	c.AddEndpoint(host, cf, kf)
 	log15.Info("directive:http.items", "h", h)
 	return false, nil
 }

@@ -11,5 +11,5 @@ func main() {
 		log.Error("main", "error", err)
 		panic(err)
 	}
-	log.Fatal(srv.ListenAndServe())
+	log.Fatal(srv.Run())
 }
