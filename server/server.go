@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/inconshreveable/log15"
 	"github.com/robertkrimen/otto"
 
 	"github.com/natural/missmolly/api"
@@ -150,18 +149,18 @@ func (s *server) Run() (err error) {
 		if ep.tls {
 			go func() {
 				defer wg.Done()
-				log15.Info("server.run.listen-tls", "addr", srv.Addr)
+				log.Info("server.run.listen-tls", "addr", srv.Addr)
 				if e := srv.ListenAndServeTLS(ep.certfile, ep.keyfile); e != nil {
-					log15.Error("server:run.listen-tls", "error", e)
+					log.Error("server.run.listen-tls", "error", e)
 					err = e
 				}
 			}()
 		} else {
 			go func() {
 				defer wg.Done()
-				log15.Info("server.run.listen", "addr", srv.Addr)
+				log.Info("server.run.listen", "addr", srv.Addr)
 				if e := srv.ListenAndServe(); e != nil {
-					log15.Error("server.run.listen", "error", e)
+					log.Error("server.run.listen", "error", e)
 					err = e
 				}
 			}()

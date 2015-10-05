@@ -132,4 +132,4 @@
   - listen: :3000, localhost:4000, public:5000
 
 - init: app = {}; app.database = {};
-- init: file:path/to/init.js
+- init: path/to/init.js
