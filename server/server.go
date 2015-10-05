@@ -20,10 +20,21 @@ import (
 
 //
 //
+func NewFromFile(fn string) (api.ServerManipulator, error) {
+	bs, err := ioutil.ReadFile(fn)
+	if err != nil {
+		log.Error("server.new.file", "error", err)
+		return nil, err
+	}
+	return NewFromBytes(bs)
+}
+
+//
+//
 func NewFromBytes(bs []byte) (api.ServerManipulator, error) {
 	c, err := config.New(bs)
 	if err != nil {
-		log.Error("server.new.config", "error", err)
+		log.Error("server.new.bytes", "error", err)
 		return nil, err
 	}
 	return New(c)
@@ -31,27 +42,29 @@ func NewFromBytes(bs []byte) (api.ServerManipulator, error) {
 
 //
 //
-func New(c *config.Config) (api.ServerManipulator, error) {
-	s := &Server{
-		Config: c,
-		Router: mux.NewRouter(),
-		VM:     otto.New(),
-	}
+type dirsrc struct {
+	dir directive.Directive
+	src map[string]interface{}
+}
 
-	type ds struct {
-		d directive.Directive
-		i map[string]interface{}
+//
+//
+func New(c *config.Config) (api.ServerManipulator, error) {
+	s := &server{
+		config: c,
+		router: mux.NewRouter(),
+		vm:     otto.New(),
 	}
 
 	// locate the all directives used
-	dss := map[string][]ds{}
+	dss := map[string][]dirsrc{}
 	for _, rd := range c.RawItems {
 		if k, d := directive.Select(rd); d != nil {
 			c.Directives = append(c.Directives, d)
 			if _, ok := dss[k]; ok {
-				dss[k] = append(dss[k], ds{d, rd})
+				dss[k] = append(dss[k], dirsrc{d, rd})
 			} else {
-				dss[k] = []ds{{d, rd}}
+				dss[k] = []dirsrc{{d, rd}}
 			}
 		} else {
 			log.Warn("server.new.directive", "missing", rd)
@@ -59,25 +72,15 @@ func New(c *config.Config) (api.ServerManipulator, error) {
 	}
 
 	// apply the directives in registry order
-	for i, dn := range directive.Keys() {
-		for j, w := range dss[dn] {
-			w.d.Process(s, w.i)
-			log.Info("server.new.process", "w", w, "i", i, "j", j)
+	for _, dn := range directive.Keys() {
+		for _, w := range dss[dn] {
+			w.dir.Process(s, w.src)
+			log.Info("server.new.process", "directive", dn)
 		}
 	}
 
 	log.Info("server.new.directives", "count", len(c.Directives))
 	return s, nil
-}
-
-//
-//
-func NewFromFile(fn string) (api.ServerManipulator, error) {
-	bs, err := ioutil.ReadFile(fn)
-	if err != nil {
-		return nil, err
-	}
-	return NewFromBytes(bs)
 }
 
 type endpoint struct {
@@ -89,10 +92,10 @@ type endpoint struct {
 
 // Root handler, delegates to an internal mux.
 //
-type Server struct {
-	Config *config.Config
-	Router *mux.Router
-	VM     *otto.Otto
+type server struct {
+	config *config.Config
+	router *mux.Router
+	vm     *otto.Otto
 
 	epts   []endpoint
 	inits  []func(*otto.Otto) error
@@ -101,34 +104,34 @@ type Server struct {
 
 // implement the ServerManipulator interface:
 //
-func (s *Server) OnInit(f func(*otto.Otto) error) {
+func (s *server) OnInit(f func(*otto.Otto) error) {
 	s.inits = append(s.inits, f)
 }
 
 //
 //
-func (s *Server) Endpoint(host, certfile, keyfile string, tls bool) {
+func (s *server) Endpoint(host, certfile, keyfile string, tls bool) {
 	s.epts = append(s.epts, endpoint{host, certfile, keyfile, tls})
 }
 
-func (s *Server) HttpServer(host string) *http.Server {
+func (s *server) HttpServer(host string) *http.Server {
 	return s.httpds[host]
 }
 
 //
 //
-func (s *Server) Handler(path string, handler http.Handler) {
-	s.Router.Handle(path, handler)
+func (s *server) Handler(path string, handler http.Handler) {
+	s.router.Handle(path, handler)
 }
 
 //
 //
-func (s *Server) Run() (err error) {
+func (s *server) Run() (err error) {
 	if len(s.epts) == 0 {
 		return errors.New("no server endpoints; config missing http and/or https?")
 	}
 	for _, f := range s.inits {
-		if err := f(s.VM); err != nil {
+		if err := f(s.vm); err != nil {
 			return err
 		}
 	}
@@ -147,7 +150,7 @@ func (s *Server) Run() (err error) {
 		if ep.tls {
 			go func() {
 				defer wg.Done()
-				log15.Info("server:run.listen-tls", "addr", srv.Addr)
+				log15.Info("server.run.listen-tls", "addr", srv.Addr)
 				if e := srv.ListenAndServeTLS(ep.certfile, ep.keyfile); e != nil {
 					log15.Error("server:run.listen-tls", "error", e)
 					err = e
@@ -156,23 +159,22 @@ func (s *Server) Run() (err error) {
 		} else {
 			go func() {
 				defer wg.Done()
-				log15.Info("server:run.listen", "addr", srv.Addr)
+				log15.Info("server.run.listen", "addr", srv.Addr)
 				if e := srv.ListenAndServe(); e != nil {
-					log15.Error("server:run.listen", "error", e)
+					log15.Error("server.run.listen", "error", e)
 					err = e
 				}
 			}()
 		}
 
 	}
-
 	wg.Wait()
 	return
 }
 
 //
 //
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	vm, err := s.NewVM(w, r)
 	if err != nil {
 		log.Error("server.new.vm", "error", err)
@@ -181,20 +183,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	js := `
         response.write('hello from javascript: ' + r.Method);
     `
-	if _, err := vm.Run(js); err != nil {
-		log.Error("server.vm run", "path", r.URL, "error", err)
+	if val, err := vm.Run(js); err == nil {
+		log.Info("server.vm.run", "path", r.URL, "value", val)
 	} else {
-		log.Info("server.vm.run", "path", r.URL, "status", "?")
+		log.Error("server.vm run", "path", r.URL, "error", err)
 	}
 
 }
 
 //
 //
-func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) (*otto.Otto, error) {
+func (s *server) NewVM(w http.ResponseWriter, r *http.Request) (*otto.Otto, error) {
 	// faster than channel, mb need a diff way to queue vm copies.  still slow.
-	// sync.Pool not much faster either.
-	vm := s.VM.Copy()
+	// sync.Pool not faster either.
+	vm := s.vm.Copy()
 
 	// build some kind of api instead?
 	vm.Set("r", r)
