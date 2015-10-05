@@ -4,46 +4,55 @@
 - location: /launch/all/the/things
 
   # the content key is used as the handler for this location.  it
-  # can be the key of a registered handler (like this one), or it
-  # can be a chunk of javascript code, or it can be a path to a
-  # javascript file.
+  # can be the name of a registered handler:
   content: RocketLauncherHandler
-  # content: response.Write("rockets launching!")
-  # content: file:path/to/app/scripts/rockets.js
+
+  # or can be a chunk of javascript code
+  content: >-
+    response.Write("rockets launching!")
+
+  # or it can be a path to a javascript file:
+  content: file:evil_base_app/to/app/scripts/rockets.js
 
 
 # the `location` directive has oodles of options, here's a sample:
 #
 - location: /home/{user}
-  match:
-    prefix: /home/ # match only this prefix
-    hosts: # match only these hosts
-      - example.com
-      - example.io
-    methods: # match only these http methods
-      - get
-      - head
-    schemes: # match only these schemes
-      - http
-      - https
-    queries: # match only these query strings
-      - id: "{id:[0-9]+}"
-      - category: food
-    headers: # match only these headers
-      - Content-Type: application/json
-      - X-Requested-With: XMLHttpRequest
-    custom: # match when these functions return true
-      - ServeOnlyOnFridays
-      - ServeOnlyExternalIpRanges
 
-  # the `rewrite` directives get first whack at the request/response:
+  # the `rewrite` directive ///
   rewrite: DenySomeRequestsRandomlyOnTuesdays
+
   # or via javascript:
   rewrite: >-
     var q = request.url.get("q")
     if (q === "rewrite") {
       response.Redirect("/greetings?who=earthling")
     }
+
+  # `match` limits request processing to requests that meet the
+  # declared criteria.
+  match:
+    prefix: /home/
+    hosts:
+      - example.com
+      - example.io
+    methods:
+      - get
+      - head
+    schemes:
+      - http
+      - https
+    queries:
+      - id: "{id:[0-9]+}"
+      - category: food
+    headers:
+      - Content-Type: application/json
+      - X-Requested-With: XMLHttpRequest
+    # match when these functions return true
+    custom:
+      - ServeOnlyOnFridays
+      - ServeOnlyExternalIpRanges
+
 
   # one or more handler mapping functions ( func(http.Handler) http.Handler )
   # these are called in order, to create a nested http.Handler.

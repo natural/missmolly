@@ -19,7 +19,7 @@ import (
 func NewFromBytes(bs []byte) (*Server, error) {
 	c, err := config.New(bs)
 	if err != nil {
-		log.Error("server", "error", err, "cond", 0)
+		log.Error("server:new", "error", err, "cond", 0)
 		return nil, err
 	}
 	return New(c)
@@ -28,21 +28,41 @@ func NewFromBytes(bs []byte) (*Server, error) {
 //
 //
 func New(c *config.Config) (*Server, error) {
-	r := mux.NewRouter()
-	o := otto.New()
-
 	s := &Server{
 		Config: c,
-		Router: r,
-		VM:     o,
+		Router: mux.NewRouter(),
+		VM:     otto.New(),
 	}
 
+	type ds struct {
+		d directive.Directive
+		i map[string]interface{}
+	}
+
+	// locate the all directives used
+	dss := map[string][]ds{}
 	for _, rd := range c.RawItems {
-		if d := directive.Select(rd); d != nil {
+		if k, d := directive.Select(rd); d != nil {
 			c.Directives = append(c.Directives, d)
+			if _, ok := dss[k]; ok {
+				dss[k] = append(dss[k], ds{d, rd})
+			} else {
+				dss[k] = []ds{{d, rd}}
+			}
+		} else {
+			log.Warn("server:new.directive", "missing", rd)
 		}
 	}
-	log.Info("server.new", "directives.count", len(c.Directives))
+
+	// apply the directives in registry order
+	for i, dn := range directive.Keys() {
+		for j, w := range dss[dn] {
+			w.d.Process(s, w.i)
+			log.Info("server:new.process", "w", w, "i", i, "j", j)
+		}
+	}
+
+	log.Info("server:new.directives", "count", len(c.Directives))
 	return s, nil
 }
 
@@ -62,6 +82,33 @@ type Server struct {
 	Config *config.Config
 	Router *mux.Router
 	VM     *otto.Otto
+
+	Hosts []string
+
+	inits []func(*otto.Otto) error
+}
+
+func (s *Server) init() error {
+	for _, f := range s.inits {
+		if err := f(s.VM); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// implement the ServerManipulator interface:
+func (s *Server) OnInit(f func(*otto.Otto) error) error {
+	s.inits = append(s.inits, f)
+	return nil
+}
+
+func (s *Server) AddHost(host, certFile, keyFile string) {
+	s.Hosts = append(s.Hosts, host)
+}
+
+func (s *Server) AddHandler(path string, handler http.Handler) {
+	s.Router.Handle(path, handler)
 }
 
 //
@@ -75,6 +122,7 @@ func (s *Server) ListenAndServe() error {
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
+	s.init()
 	return srv.ListenAndServe()
 }
 
@@ -91,9 +139,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         console.log("client accepts:", r.Header["Accept"])
     `
 	if _, err := vm.Run(js); err != nil {
-		log.Error("vm", "path", r.URL, "error", err)
+		log.Error("vm:run", "path", r.URL, "error", err)
 	} else {
-		log.Info("vm", "path", r.URL, "status", "?")
+		log.Info("vm:run", "path", r.URL, "status", "?")
 	}
 
 }
@@ -106,13 +154,13 @@ func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) (*otto.Otto, erro
 	vm.Set("r", r)
 	vm.Set("w", w)
 
-	con, err := vm.Object("console")
-	if err != nil {
-		return nil, err
-	}
-	con.Set("log", func(items ...interface{}) {
-		log.Info("request", items...)
-	})
+	// con, err := vm.Object("console")
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// con.Set("log", func(items ...interface{}) {
+	// 	log.Info("request", items...)
+	// })
 
 	// build some kind of api instead:
 	// build the request object
@@ -130,8 +178,7 @@ func (s *Server) NewVM(w http.ResponseWriter, r *http.Request) (*otto.Otto, erro
 	// build the response object
 	vres, err := vm.Object("response = {}")
 	if err != nil {
-		log.Error("server", "error", err)
-		panic(err)
+		return nil, err
 	}
 	vtbl = map[string]interface{}{
 		"write": func(v string) {
