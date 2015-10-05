@@ -9,10 +9,10 @@
 
   # or can be a chunk of javascript code
   content: >-
-    response.Write("rockets launching!")
+    response.write("rockets launched!")
 
   # or it can be a path to a javascript file:
-  content: file:evil_base_app/to/app/scripts/rockets.js
+  content: file:scripts/rocketlauncher.js
 
 
 # the `location` directive has oodles of options, here's a sample:
