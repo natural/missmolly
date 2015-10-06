@@ -2,7 +2,7 @@
 
 Miss Molly is a web application server and library, written in Go, featuring
 a friendly YAML config syntax and scritable request processing via an embedded
-JavaScript interpreter.
+Lua interpreter.
 
 ## Quick Start ##
 
@@ -33,7 +33,7 @@ shell commands above:
 $ cat <<EOF >example-config.yaml
 - location: /
   content: >-
-    request.write('Hello, world.')
+    request:write('Hello, world.')
 EOF
 ```
 
