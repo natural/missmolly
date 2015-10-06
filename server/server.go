@@ -2,14 +2,13 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/robertkrimen/otto"
+	"github.com/yuin/gopher-lua"
 
 	"github.com/natural/missmolly/api"
 	"github.com/natural/missmolly/config"
@@ -52,7 +51,6 @@ func New(c *config.Config) (api.ServerManipulator, error) {
 	s := &server{
 		config: c,
 		router: mux.NewRouter(),
-		vm:     otto.New(),
 	}
 
 	// locate the all directives used
@@ -94,16 +92,15 @@ type endpoint struct {
 type server struct {
 	config *config.Config
 	router *mux.Router
-	vm     *otto.Otto
 
 	epts   []endpoint
-	inits  []func(*otto.Otto) error
+	inits  []func(L *lua.LState) error
 	httpds map[string]*http.Server
 }
 
 // implement the ServerManipulator interface:
 //
-func (s *server) OnInit(f func(*otto.Otto) error) {
+func (s *server) OnInit(f func(L *lua.LState) error) {
 	s.inits = append(s.inits, f)
 }
 
@@ -129,11 +126,11 @@ func (s *server) Run() (err error) {
 	if len(s.epts) == 0 {
 		return errors.New("no server endpoints; config missing http and/or https?")
 	}
-	for _, f := range s.inits {
-		if err := f(s.vm); err != nil {
-			return err
-		}
-	}
+	// for _, f := range s.inits {
+	// 	if err := f(s.vm); err != nil {
+	// 		return err
+	// 	}
+	// }
 	wg := sync.WaitGroup{}
 	s.httpds = map[string]*http.Server{}
 	for _, ep := range s.epts {
@@ -171,69 +168,40 @@ func (s *server) Run() (err error) {
 	return
 }
 
-//
-//
-func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.router.ServeHTTP(w, r)
-	return
-	vm, err := s.NewVM(w, r)
-	if err != nil {
-		log.Error("server.new.vm", "error", err)
-		return
-	}
-	js := `
-        response.write('hello from javascript: ' + r.Method);
-    `
-	if val, err := vm.Run(js); err == nil {
-		log.Info("server.vm.run", "path", r.URL, "value", val)
-	} else {
-		log.Error("server.vm run", "path", r.URL, "error", err)
-	}
+type VmResponseWriter struct {
+	w http.ResponseWriter
+}
 
+func (w *VmResponseWriter) Write(s string) (int, error) {
+	return w.w.Write([]byte(s))
 }
 
 //
 //
-func (s *server) NewVM(w http.ResponseWriter, r *http.Request) (*otto.Otto, error) {
-	// faster than channel, mb need a diff way to queue vm copies.  still slow.
-	// sync.Pool not faster either.
-	vm := s.vm.Copy()
+func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	L := lua.NewState()
+	defer L.Close()
 
-	// build some kind of api instead?
-	vm.Set("r", r)
-	vm.Set("w", w)
-
-	// build the request object:
-	vreq, err := vm.Object(fmt.Sprintf("request = {}"))
-	if err != nil {
-		return nil, err
-	}
-	vtbl := map[string]interface{}{
-		"method": r.Method,
-	}
-	for k, v := range vtbl {
-		vreq.Set(k, v)
-	}
-
-	// build the response object:
-	vres, err := vm.Object("response = {}")
-	if err != nil {
-		return nil, err
-	}
-	vtbl = map[string]interface{}{
-		"write": func(v string) {
-			w.Write([]byte(v))
-		},
-		"status": func(i int) {
-			w.WriteHeader(i)
-		},
-		"header": func() http.Header {
-			return w.Header()
-		},
-	}
-	for k, v := range vtbl {
-		vres.Set(k, v)
-	}
-
-	return vm, nil
+	L.PreloadModule("response", func(L *lua.LState) int {
+		api := map[string]lua.LGFunction{
+			"write": func(L *lua.LState) int {
+				s := L.CheckString(1)
+				w.Write([]byte(s))
+				L.Push(nil)
+				return 1
+			},
+		}
+		t := L.NewTable()
+		L.SetFuncs(t, api)
+		L.Push(t)
+		return 1
+	})
+	// yeah no
+	_ = L.DoString(`response = require "response"
+                    response.write("hello, world (lua)")`)
+	// if err != nil {
+	// 	log.Error("server.vm run", "path", r.URL, "error", err)
+	// } else {
+	// 	log.Info("server.vm.run", "path", r.URL, "value", "")
+	// }
 }

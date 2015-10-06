@@ -4,14 +4,14 @@ package api
 
 import (
 	"github.com/gorilla/mux"
-	"github.com/robertkrimen/otto"
+	"github.com/yuin/gopher-lua"
 	"gopkg.in/yaml.v2"
 )
 
 //
 //
 type ServerManipulator interface {
-	OnInit(func(*otto.Otto) error)
+	OnInit(func(L *lua.LState) error)
 	Endpoint(string, string, string, bool)
 	Route(string) *mux.Route
 	Run() error

@@ -7,7 +7,7 @@ import (
 
 	"github.com/natural/missmolly/api"
 	"github.com/natural/missmolly/log"
-	"github.com/robertkrimen/otto"
+	"github.com/yuin/gopher-lua"
 )
 
 //
@@ -27,10 +27,11 @@ func (d *InitDirective) Process(c api.ServerManipulator, items map[string]interf
 			log.Info("directive.init.readfile", "error", err)
 		}
 	}
-	c.OnInit(func(vm *otto.Otto) error {
-		v, err := vm.Run(s)
-		log.Info("vm.init", "source-len", len(s), "error", err, "value", v)
-		return err
+	c.OnInit(func(L *lua.LState) error {
+		//v, err := vm.Run(s)
+		//log.Info("vm.init", "source-len", len(s), "error", err, "value", v)
+		//return err
+		return nil
 	})
 	return false, nil
 }
