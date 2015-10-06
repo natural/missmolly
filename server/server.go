@@ -119,8 +119,8 @@ func (s *server) HttpServer(host string) *http.Server {
 
 //
 //
-func (s *server) Handler(path string, handler http.Handler) {
-	s.router.Handle(path, handler)
+func (s *server) Route(path string) *mux.Route {
+	return s.router.Path(path)
 }
 
 //
@@ -174,6 +174,8 @@ func (s *server) Run() (err error) {
 //
 //
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.router.ServeHTTP(w, r)
+	return
 	vm, err := s.NewVM(w, r)
 	if err != nil {
 		log.Error("server.new.vm", "error", err)

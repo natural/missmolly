@@ -3,8 +3,7 @@
 package api
 
 import (
-	"net/http"
-
+	"github.com/gorilla/mux"
 	"github.com/robertkrimen/otto"
 	"gopkg.in/yaml.v2"
 )
@@ -14,7 +13,7 @@ import (
 type ServerManipulator interface {
 	OnInit(func(*otto.Otto) error)
 	Endpoint(string, string, string, bool)
-	Handler(string, http.Handler)
+	Route(string) *mux.Route
 	Run() error
 }
 
