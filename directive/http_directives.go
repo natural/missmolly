@@ -5,20 +5,25 @@ import (
 	"github.com/natural/missmolly/log"
 )
 
+type HttpDirective struct {
+	Http     string
+	Https    string
+	CertFile string
+	KeyFile  string
+}
+
 //
 //
-func HttpDirective(c api.ServerManipulator, items map[string]interface{}) (bool, error) {
-	h := map[string]string{}
-	if err := api.Remarshal(items, &h); err != nil {
+func (d *HttpDirective) Process(c api.ServerManipulator, items map[string]interface{}) (bool, error) {
+	if err := api.Remarshal(items, d); err != nil {
 		log.Error("directive.http.remarshal", "error", err)
 		return false, err
 	}
-	host, cf, kf := h["http"], h["certfile"], h["keyfile"]
+	host, cf, kf := d.Http, d.CertFile, d.KeyFile
 	if host == "" {
-		host = h["https"]
+		host = d.Https
 	}
 	// mb check cert and key files exist and are readable
-	c.Endpoint(host, cf, kf, host == h["https"])
-	//log.Info("directive.http.items", "h", h)
+	c.Endpoint(host, cf, kf, host == d.Https)
 	return false, nil
 }

@@ -11,8 +11,9 @@ import (
 )
 
 //
+type InitDirective struct{}
 
-func InitDirective(c api.ServerManipulator, items map[string]interface{}) (bool, error) {
+func (d *InitDirective) Process(c api.ServerManipulator, items map[string]interface{}) (bool, error) {
 	s, ok := items["init"].(string)
 	if !ok {
 		return false, errors.New("init value not string")

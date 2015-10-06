@@ -16,9 +16,9 @@ type Directives []Directive
 // Global directive registry.
 //
 var reg = Registry{
-	{"builtin", "init", FromFunc(InitDirective)},
-	{"builtin", "http", FromFunc(HttpDirective)},
-	{"builtin", "https", FromFunc(HttpDirective)},
+	{"builtin", "init", &InitDirective{}},
+	{"builtin", "http", &HttpDirective{}},
+	{"builtin", "https", &HttpDirective{}},
 	{"builtin", "location", &LocationDirective{}},
 }
 
