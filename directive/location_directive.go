@@ -12,8 +12,6 @@ import (
 //
 //
 type LocationDirective struct {
-	// NB:  these are filled in by Process() below, not when the directive
-	// is created.
 	Location   string
 	Content    string
 	Match      Match
@@ -21,6 +19,25 @@ type LocationDirective struct {
 
 	Auth   string
 	Nested []LocationDirective
+}
+
+//
+//
+func (d *LocationDirective) Name() string {
+	return DIR_LOC
+}
+
+//
+//
+func (d *LocationDirective) Package() string {
+	return DIR_PKG
+}
+
+//
+//
+func (d *LocationDirective) Accept(decl map[string]interface{}) bool {
+	_, ok := decl[DIR_LOC]
+	return ok
 }
 
 //

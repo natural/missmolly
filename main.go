@@ -7,14 +7,14 @@ import (
 	"github.com/natural/missmolly/server"
 )
 
-// name the options and defaults.
+// name some options and defaults.
 //
 var opts = struct {
 	config   string
 	loglevel string
 }{
 	"missmolly.conf",
-	log.LvlCurrent.String(),
+	log.CurrentLevel.String(),
 }
 
 // slurp those options.

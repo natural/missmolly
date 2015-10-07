@@ -5,11 +5,35 @@ import (
 	"github.com/natural/missmolly/log"
 )
 
+//
+//
 type HttpDirective struct {
 	Http     string
 	Https    string
 	CertFile string
 	KeyFile  string
+}
+
+//
+//
+func (d *HttpDirective) Name() string {
+	return DIR_HTTP
+}
+
+//
+//
+func (d *HttpDirective) Package() string {
+	return DIR_PKG
+}
+
+//
+//
+func (d *HttpDirective) Accept(decl map[string]interface{}) bool {
+	_, ok := decl[DIR_HTTP]
+	if !ok {
+		_, ok = decl[DIR_HTTP+"s"]
+	}
+	return ok
 }
 
 //

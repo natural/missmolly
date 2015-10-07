@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-//
+// Directives are given objects that implement ServerManipulator.
 //
 type ServerManipulator interface {
 	OnInit(func(L *lua.LState) error)
@@ -26,3 +26,17 @@ func Remarshal(in interface{}, out interface{}) error {
 	}
 	return yaml.Unmarshal(bs, out)
 }
+
+// Directive interprets a map of objects, possibly creating http
+// handlers, possibly modifying the server, etc.
+//
+type Directive interface {
+	Accept(map[string]interface{}) bool
+	Name() string
+	Package() string
+	Process(ServerManipulator, map[string]interface{}) (bool, error)
+}
+
+// Type DirectiveRegistry is a slice of Directives.
+//
+type DirectiveRegistry []Directive

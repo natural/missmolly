@@ -3,7 +3,6 @@ package config
 import (
 	"gopkg.in/yaml.v2"
 
-	"github.com/natural/missmolly/directive"
 	"github.com/natural/missmolly/log"
 )
 
@@ -11,23 +10,20 @@ import (
 // builds and populates one of these.
 //
 type Config struct {
-	Directives directive.Directives
-	RawItems   []map[string]interface{}
+	SourceItems []map[string]interface{}
 }
 
 //
 //
 func New(bs []byte) (*Config, error) {
-	rds := []map[string]interface{}{}
-	err := yaml.Unmarshal(bs, &rds)
+	src := []map[string]interface{}{}
+	err := yaml.Unmarshal(bs, &src)
 	if err != nil {
 		log.Error("config.init.unmarshal", "error", err)
 		return nil, err
 	}
-	drs := directive.Directives{}
 	cfg := &Config{
-		Directives: drs,
-		RawItems:   rds,
+		SourceItems: src,
 	}
 	log.Info("config.init.success", "bytes", len(bs))
 	return cfg, nil

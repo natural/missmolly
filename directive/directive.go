@@ -4,70 +4,28 @@ import (
 	"github.com/natural/missmolly/api"
 )
 
-// Directive interprets a map of objects, possibly creating http handlers, possibly
-// modifying the server, etc.
+// Package directive registry.
 //
-type Directive interface {
-	Process(api.ServerManipulator, map[string]interface{}) (bool, error)
+var reg = api.DirectiveRegistry{
+	&InitDirective{},
+	&HttpDirective{},
+	&LocationDirective{},
 }
 
-type Directives []Directive
-
-// Global directive registry.
+// Returns all of the Directives in the package registry.
 //
-var reg = Registry{
-	{"builtin", "init", &InitDirective{}},
-	{"builtin", "http", &HttpDirective{}},
-	{"builtin", "https", &HttpDirective{}},
-	{"builtin", "location", &LocationDirective{}},
-}
-
-//
-//
-func Keys() []string {
-	ks := make([]string, len(reg))
-	for i, r := range reg {
-		ks[i] = r.Key
+func All() []api.Directive {
+	ds := []api.Directive{}
+	for _, d := range reg {
+		ds = append(ds, d)
 	}
-	return ks
+	return ds
 }
 
-// RegistryEntry is a tuple of (key, directive).
-//
-type RegistryEntry struct {
-	Package   string
-	Key       string
-	Directive Directive
-}
+const (
+	DIR_PKG = "builtin"
 
-// Registry is a slice of RegistryEntry.
-//
-type Registry []RegistryEntry
-
-// Matches items by key to a directive.
-//
-func Select(items map[string]interface{}) (string, Directive) {
-	for _, r := range reg {
-		if _, ok := items[r.Key]; ok {
-			return r.Key, r.Directive
-		}
-	}
-	return "", nil
-}
-
-//
-type DirectiveFunc func(api.ServerManipulator, map[string]interface{}) (bool, error)
-
-//
-//
-func FromFunc(f DirectiveFunc) Directive {
-	return dfw{f}
-}
-
-//
-//
-type dfw struct{ df DirectiveFunc }
-
-func (d dfw) Process(srv api.ServerManipulator, items map[string]interface{}) (bool, error) {
-	return d.df(srv, items)
-}
+	DIR_HTTP = "http"
+	DIR_INIT = "init"
+	DIR_LOC  = "location"
+)

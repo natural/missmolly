@@ -11,8 +11,30 @@ import (
 )
 
 //
+//
 type InitDirective struct{}
 
+//
+//
+func (d *InitDirective) Name() string {
+	return DIR_INIT
+}
+
+//
+//
+func (d *InitDirective) Package() string {
+	return DIR_PKG
+}
+
+//
+//
+func (d *InitDirective) Accept(decl map[string]interface{}) bool {
+	_, ok := decl[DIR_INIT]
+	return ok
+}
+
+//
+//
 func (d *InitDirective) Process(c api.ServerManipulator, items map[string]interface{}) (bool, error) {
 	s, ok := items["init"].(string)
 	if !ok {
@@ -27,11 +49,11 @@ func (d *InitDirective) Process(c api.ServerManipulator, items map[string]interf
 			log.Info("directive.init.readfile", "error", err)
 		}
 	}
+
 	c.OnInit(func(L *lua.LState) error {
-		//v, err := vm.Run(s)
-		//log.Info("vm.init", "source-len", len(s), "error", err, "value", v)
-		//return err
+		L.SetGlobal("motd", lua.LString("hello, world oninit"))
 		return nil
 	})
+
 	return false, nil
 }

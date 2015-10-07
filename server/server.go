@@ -16,7 +16,8 @@ import (
 	"github.com/natural/missmolly/log"
 )
 
-//
+// NewFromFile builds a ServerManipulator from the given config file.
+// File should be YAML data.
 //
 func NewFromFile(fn string) (api.ServerManipulator, error) {
 	bs, err := ioutil.ReadFile(fn)
@@ -27,7 +28,8 @@ func NewFromFile(fn string) (api.ServerManipulator, error) {
 	return NewFromBytes(bs)
 }
 
-//
+// NewFromBytes builds a ServerManipulator from the given byte slice.
+// Contents should be YAML.
 //
 func NewFromBytes(bs []byte) (api.ServerManipulator, error) {
 	c, err := config.New(bs)
@@ -38,45 +40,23 @@ func NewFromBytes(bs []byte) (api.ServerManipulator, error) {
 	return New(c)
 }
 
-//
-//
-type dirsrc struct {
-	dir directive.Directive
-	src map[string]interface{}
-}
-
-//
+// New builds a ServerManipulator from the given Config struct.
 //
 func New(c *config.Config) (api.ServerManipulator, error) {
-	s := &server{
-		config: c,
-		router: mux.NewRouter(),
-	}
+	r := mux.NewRouter()
+	s := &server{config: c, router: r, rootvm: lua.NewState()}
 
-	// locate the all directives used
-	dss := map[string][]dirsrc{}
-	for _, rd := range c.RawItems {
-		if k, d := directive.Select(rd); d != nil {
-			c.Directives = append(c.Directives, d)
-			if _, ok := dss[k]; ok {
-				dss[k] = append(dss[k], dirsrc{d, rd})
-			} else {
-				dss[k] = []dirsrc{{d, rd}}
+	for _, dir := range directive.All() {
+		for i, decl := range c.SourceItems {
+			if dir.Accept(decl) {
+				dir.Process(s, decl)
+				log.Info("server.new",
+					"process.directive", dir.Name(), "block", i)
 			}
-		} else {
-			log.Warn("server.new.directive", "missing", rd)
 		}
 	}
 
-	// apply the directives in registry order
-	for _, dn := range directive.Keys() {
-		for _, w := range dss[dn] {
-			w.dir.Process(s, w.src)
-			log.Info("server.new.process", "directive", dn)
-		}
-	}
-
-	log.Info("server.new.directives", "count", len(c.Directives))
+	log.Info("server.new", "error", nil)
 	return s, nil
 }
 
@@ -96,6 +76,8 @@ type server struct {
 	epts   []endpoint
 	inits  []func(L *lua.LState) error
 	httpds map[string]*http.Server
+
+	rootvm *lua.LState
 }
 
 // implement the ServerManipulator interface:
@@ -126,11 +108,12 @@ func (s *server) Run() (err error) {
 	if len(s.epts) == 0 {
 		return errors.New("no server endpoints; config missing http and/or https?")
 	}
-	// for _, f := range s.inits {
-	// 	if err := f(s.vm); err != nil {
-	// 		return err
-	// 	}
-	// }
+	for _, f := range s.inits {
+		if err := f(s.rootvm); err != nil {
+			return err
+		}
+	}
+
 	wg := sync.WaitGroup{}
 	s.httpds = map[string]*http.Server{}
 	for _, ep := range s.epts {
@@ -168,40 +151,74 @@ func (s *server) Run() (err error) {
 	return
 }
 
-type VmResponseWriter struct {
-	w http.ResponseWriter
-}
-
-func (w *VmResponseWriter) Write(s string) (int, error) {
-	return w.w.Write([]byte(s))
-}
-
-//
+// This method needs to morph into something that routes the request;
+// the stuff bits already here need to move to some kind of ContentHandler.
 //
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	L := lua.NewState()
+	L := s.NewVM(w, r)
 	defer L.Close()
 
-	L.PreloadModule("response", func(L *lua.LState) int {
-		api := map[string]lua.LGFunction{
-			"write": func(L *lua.LState) int {
-				s := L.CheckString(1)
-				w.Write([]byte(s))
-				L.Push(nil)
-				return 1
-			},
-		}
-		t := L.NewTable()
-		L.SetFuncs(t, api)
-		L.Push(t)
-		return 1
+	err := L.DoString(`response.write(request.user_agent())`)
+	if err != nil {
+		log.Error("server.vm run", "path", r.URL, "error", err)
+	}
+}
+
+//
+func (s *server) NewVM(w http.ResponseWriter, r *http.Request) *lua.LState {
+	// smaller sizes == faster benchmarks
+	L := lua.NewState(lua.Options{
+		CallStackSize:       120,
+		RegistrySize:        128, // smallest per source
+		SkipOpenLibs:        true,
+		IncludeGoStackTrace: true,
 	})
-	// yeah no
-	_ = L.DoString(`response = require "response"
-                    response.write("hello, world (lua)")`)
-	// if err != nil {
-	// 	log.Error("server.vm run", "path", r.URL, "error", err)
-	// } else {
-	// 	log.Info("server.vm.run", "path", r.URL, "value", "")
-	// }
+
+	// copy some globals from the root vm into this one
+	for _, g := range []string{"motd", "app", "session"} {
+		L.SetGlobal(g, s.rootvm.GetGlobal(g))
+	}
+
+	// make the "response" api (incomplete)
+	lres := L.NewTable()
+	L.SetGlobal("response", lres)
+	L.SetFuncs(lres, map[string]lua.LGFunction{
+		"write": func(L *lua.LState) int {
+			s := L.CheckString(1)
+			c, err := w.Write([]byte(s))
+			e := ""
+			if err != nil {
+				e = err.Error()
+			}
+			L.Push(lua.LString(e))
+			L.Push(lua.LNumber(c))
+			return 2
+		},
+	})
+
+	// make the "request" api (incomplete)
+	lreq := L.NewTable()
+	L.SetGlobal("request", lreq)
+	lreq.RawSetString("method", lua.LString(r.Method))
+	lreq.RawSetString("remote_addr", lua.LString(r.RemoteAddr))
+	lreq.RawSetString("request_uri", lua.LString(r.RequestURI))
+	lreq.RawSetString("url", lua.LString(r.URL.String()))
+	lreq.RawSetString("proto", lua.LString(r.Proto))
+	lreq.RawSetString("proto_major", lua.LNumber(r.ProtoMajor))
+	lreq.RawSetString("proto_minor", lua.LNumber(r.ProtoMinor))
+	lreq.RawSetString("content_length", lua.LNumber(r.ContentLength))
+	lreq.RawSetString("close", lua.LBool(r.Close))
+	lreq.RawSetString("host", lua.LString(r.Host))
+
+	L.SetFuncs(lreq, map[string]lua.LGFunction{
+		"header": func(L *lua.LState) int {
+			// conv header map and return it
+			return 0
+		},
+		"user_agent": func(L *lua.LState) int {
+			L.Push(lua.LString(r.UserAgent()))
+			return 1
+		},
+	})
+	return L
 }
