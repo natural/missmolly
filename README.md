@@ -1,3 +1,5 @@
+[![GoDoc](https://godoc.org/github.com/natural/missmolly/directive?status.svg)](https://godoc.org/github.com/natural/missmolly/directive)
+
 # Miss Molly #
 
 Miss Molly is a web application server and library, written in Go, featuring
