@@ -1,4 +1,4 @@
-[![GoDoc](https://godoc.org/github.com/natural/missmolly/directive?status.svg)](https://godoc.org/github.com/natural/missmolly/directive)
+[![GoDoc](https://godoc.org/github.com/natural/missmolly?status.svg)](https://godoc.org/github.com/natural/missmolly)
 
 # Miss Molly #
 
