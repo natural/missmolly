@@ -1,4 +1,4 @@
-package directive
+package builtin
 
 import (
 	"github.com/natural/missmolly/api"
