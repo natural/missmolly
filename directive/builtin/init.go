@@ -17,25 +17,25 @@ type InitDirective struct{}
 //
 //
 func (d *InitDirective) Name() string {
-	return DIR_INIT
+	return dirinit
 }
 
 //
 //
 func (d *InitDirective) Package() string {
-	return DIR_PKG
+	return dirpkg
 }
 
 //
 //
 func (d *InitDirective) Accept(decl map[string]interface{}) bool {
-	_, ok := decl[DIR_INIT]
+	_, ok := decl[dirinit]
 	return ok
 }
 
 //
 //
-func (d *InitDirective) Process(c api.ServerManipulator, items map[string]interface{}) (bool, error) {
+func (d *InitDirective) Apply(c api.Server, items map[string]interface{}) (bool, error) {
 	s, ok := items["init"].(string)
 	if !ok {
 		return false, errors.New("init value not string")

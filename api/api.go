@@ -3,18 +3,23 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/gorilla/mux"
 	"github.com/yuin/gopher-lua"
 	"gopkg.in/yaml.v2"
 )
 
-// Directives are given objects that implement ServerManipulator.
+// Server slurps listen endpoints, lua initializers, and builds
+// routes.  It can also serve http via Run().
 //
-type ServerManipulator interface {
+type Server interface {
 	OnInit(func(L *lua.LState) error)
 	Endpoint(string, string, string, bool)
 	Route(string) *mux.Route
 	Run() error
+
+	NewLuaState(w http.ResponseWriter, r *http.Request) *lua.LState
 }
 
 // Map an interfacy thing into something else.
@@ -32,9 +37,9 @@ func Remarshal(in interface{}, out interface{}) error {
 //
 type Directive interface {
 	Accept(map[string]interface{}) bool
+	Apply(Server, map[string]interface{}) (bool, error)
 	Name() string
 	Package() string
-	Process(ServerManipulator, map[string]interface{}) (bool, error)
 }
 
 // Type DirectiveRegistry is a slice of Directives.

@@ -24,12 +24,12 @@ var (
 	Debug = Log.Debug
 
 	// track the log level as set by Setup
-	CurrentLevel = log15.LvlDebug
+	CurrentLevel = log15.LvlInfo
 )
 
 // Like log.Fatal but uses log15 instead.
 //
-func Fatal(v ...interface{}) {
+func Fatal(v interface{}) {
 	Log.Crit("fatal", "msg", v)
 	os.Exit(1)
 }

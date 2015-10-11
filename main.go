@@ -29,10 +29,9 @@ func init() {
 // run that server.
 //
 func main() {
-	srv, err := server.NewFromFile(opts.config)
-	if err != nil {
-		log.Error("main", "error", err)
+	if srv, err := server.NewFromFile(opts.config); err == nil {
+		log.Fatal(srv.Run())
+	} else {
 		log.Fatal(err)
 	}
-	log.Fatal(srv.Run())
 }

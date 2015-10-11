@@ -17,28 +17,28 @@ type HttpDirective struct {
 //
 //
 func (d *HttpDirective) Name() string {
-	return DIR_HTTP
+	return dirhttp
 }
 
 //
 //
 func (d *HttpDirective) Package() string {
-	return DIR_PKG
+	return dirpkg
 }
 
 //
 //
 func (d *HttpDirective) Accept(decl map[string]interface{}) bool {
-	_, ok := decl[DIR_HTTP]
+	_, ok := decl[dirhttp]
 	if !ok {
-		_, ok = decl[DIR_HTTP+"s"]
+		_, ok = decl[dirhttp+"s"]
 	}
 	return ok
 }
 
 //
 //
-func (d *HttpDirective) Process(c api.ServerManipulator, items map[string]interface{}) (bool, error) {
+func (d *HttpDirective) Apply(c api.Server, items map[string]interface{}) (bool, error) {
 	if err := api.Remarshal(items, d); err != nil {
 		log.Error("directive.http.remarshal", "error", err)
 		return false, err

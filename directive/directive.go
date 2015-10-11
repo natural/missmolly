@@ -22,3 +22,10 @@ func All() []api.Directive {
 	}
 	return ds
 }
+
+// Mosdef will give you an error later.
+//
+func Register(d api.Directive) error {
+	reg = append(reg, d)
+	return nil
+}
